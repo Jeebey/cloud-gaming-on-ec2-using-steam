@@ -51,12 +51,12 @@ Parameters:
   imageId:
     Description: AMI ID ( aws ssm get-parameters-by-path --path /aws/service/ami-windows-latest --query "Parameters[].Name" )
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base
+    Default: /aws/service/ami-windows-latest/TPM-Windows_Server-2025-English-Full-Base
 
   ec2Name:
     Type: String
     Description: EC2 instance name
-    Default: Windows Server-GAMING
+    Default: Jeebey-Tests
   instanceType:
     Description: Instance type (https://aws.amazon.com/ec2/instance-types/g5/)
     Type: String
@@ -67,18 +67,20 @@ Parameters:
       - g5.8xlarge
       - g5.16xlarge
     ConstraintDescription: Specify a valid EC2 instance type (g5.*)
-    Default: g5.2xlarge
+    Default: g5.xlarge
 
   vpcID:
     Type: AWS::EC2::VPC::Id
     Description: "VPC with internet connectivity ( https://console.aws.amazon.com/vpcconsole/home#vpcs: )"
     AllowedPattern: ".+"
     ConstraintDescription: Select a VPC
+    Default: vpc-07d50f4ec404d91bd
   subnetID:
     Type: AWS::EC2::Subnet::Id
     Description: "Subnet with internet connectivity ( https://console.aws.amazon.com/vpcconsole/home#subnets: )"
     AllowedPattern: ".+"
     ConstraintDescription: Select a Subnet
+    Default: subnet-090ea485169cda8fd
   displayPublicIP:
     Type: String
     Description: Display EC2 public IP in CloudFormation Outputs (select No if EC2 has no public IP)
@@ -92,21 +94,21 @@ Parameters:
     AllowedValues:
       - "Yes"
       - "No"
-    Default: "No"
+    Default: "Yes"
 
   ingressIPv4:
     Type: String
     Description: Allowed source IP address or prefix for RDP connection (IPv4) (e.g., 1.2.3.4/32, get your source IP from https://checkip.amazonaws.com)
     AllowedPattern: "^\\d+\\.\\d+\\.\\d+\\.\\d+\\/\\d+$"
     ConstraintDescription: Specify valid IPv4 prefix
-    Default: 0.0.0.0/32
+    Default: 176.144.235.27/32
 
   volumeSize:
     Type: Number
     Description: Volume size in GiB
     MinValue: 30
     MaxValue: 16384
-    Default: 550
+    Default: 750
   volumeType:
     Type: String
     Description: EBS volume type
@@ -144,9 +146,9 @@ Resources:
         - Key: StackId
           Value: !Sub ${AWS::StackId}
         - Key: Name
-          Value: !Sub "[${AWS::StackName}] - ${ec2Name}"
-        - Key: GitHub
-          Value: https://github.com/aws-samples/cloud-gaming-on-ec2-using-steam
+          Value: !Sub "${ec2Name}"
+        - Key: OWNER
+          Value: JBC
 
   instanceIamRole:
     Type: AWS::IAM::Role
@@ -177,8 +179,8 @@ Resources:
           Value: !Sub ${AWS::StackName}
         - Key: StackId
           Value: !Sub ${AWS::StackId}
-        - Key: GitHub
-          Value: https://github.com/aws-samples/cloud-gaming-on-ec2-using-steam
+        - Key: Owner
+          Value: JBC
 
   instanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -240,6 +242,17 @@ Resources:
                 cd
             c:\\windows\\temp\\setup.ps1:
               content: !Sub |
+                (New-Object System.Net.WebClient).DownloadFile("https://wpd.app/get/latest.zip", $dir + "\latest.zip")
+                Expand-Archive -LiteralPath $dir + "\latest.zip" -DestinationPath $dir
+                Start-Process .\AmazonSSMAgentSetup.exe -ArgumentList @("/q", "/log", "install.log") -Wait
+                Start-Process "bcdedit" -ArgumentList @("/ems", "{default}", "on") -Wait
+                Start-Process "bcdedit" -ArgumentList @("/emssettings", "EMSPORT:1", "EMSBAUDRATE:115200") -Wait
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+                Set-ExecutionPolicy -ExecutionPolicy RemoteSigned
+                Install-PackageProvider -Name NuGet -Force | Out-Null
+                Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+                Repair-WinGetPackageManager
+
                 # Check if marker file exists
                 $markerFile = "C:\windows\temp\setup_completed.marker"
                                 
@@ -267,11 +280,11 @@ Resources:
                                 
                 # Install VBCABLE driver
                 Write-Output "Downloading VBCABLE driver..."
-                Invoke-WebRequest -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip" -OutFile "C:\windows\temp\VBCABLE_Driver_Pack43.zip"
+                Invoke-WebRequest -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip" -OutFile "C:\windows\temp\VBCABLE_Driver_Pack43.zip"
                 # Extract the ZIP file
-                Expand-Archive -Path "C:\windows\temp\VBCABLE_Driver_Pack43.zip" -DestinationPath "C:\windows\temp\VBCABLE_Driver_Pack43"
+                Expand-Archive -Path "C:\windows\temp\VBCABLE_Driver_Pack45.zip" -DestinationPath "C:\windows\temp\VBCABLE_Driver_Pack43"
                 # Run the VBCABLE installer
-                $pathToCatFile = "C:\windows\temp\VBCABLE_Driver_Pack43\vbaudio_cable64_win7.cat"
+                $pathToCatFile = "C:\windows\temp\VBCABLE_Driver_Pack43\vbaudio_cable64_win10.cat"
                 $FullCertificateExportPath = "C:\windows\temp\VBCABLE_Driver_Pack43\VBCert.cer"
                 $VB = @{}
                 $VB.DriverFile = $pathToCatFile;
@@ -545,9 +558,8 @@ Resources:
           Value: !Sub ${AWS::StackName}
         - Key: StackId
           Value: !Sub ${AWS::StackId}
-        - Key: GitHub
-          Value: https://github.com/aws-samples/cloud-gaming-on-ec2-using-steam
-
+        - Key: Owner
+          Value: JBC
   elasticIP:
     Condition: useElasticIP
     Type: AWS::EC2::EIP
@@ -561,9 +573,9 @@ Resources:
         - Key: StackId
           Value: !Sub ${AWS::StackId}
         - Key: Name
-          Value: !Sub "[${AWS::StackName}] - ${ec2Name}"
-        - Key: GitHub
-          Value: https://github.com/aws-samples/cloud-gaming-on-ec2-using-steam
+          Value: !Sub "${ec2Name}"
+        - Key: OWNER
+          Value: JBC
 
 Outputs:
   SSMsessionManager:
